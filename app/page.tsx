@@ -1,45 +1,61 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-type Country =
-  | "Singapore"
-  | "Malaysia"
-  | "Hong Kong";
-
-type Category =
-  | "Healthcare"
-  | "Education";
-
-type PressRelease = {
+type Prospect = {
   id: string;
-  title: string;
-  companies: string[];
-  publisher: string;
-  country: Country;
-  category: Category;
-  publishedAt: string;
-  description: string;
-  url: string;
-  source: string;
+
+  organization: {
+    name: string;
+    country:
+      | "Singapore"
+      | "Malaysia"
+      | "Hong Kong";
+    category:
+      | "Healthcare"
+      | "Education";
+  };
+
+  announcement: {
+    title: string;
+    description: string;
+    url: string;
+    publishedAt: string;
+    source: string;
+    signals: string[];
+  };
+
+  fit: {
+    score: number;
+    reasons: string[];
+  };
+
+  contact?: {
+    name: string;
+    title: string;
+    email?: string;
+    emailSource?: string;
+    linkedinUrl?: string;
+    confidence:
+      | "high"
+      | "medium"
+      | "low";
+  };
+
+  outreach?: {
+    angle: string;
+    subject: string;
+    email: string;
+  };
 };
 
 export default function Home() {
-  const [releases, setReleases] =
-    useState<PressRelease[]>([]);
-
-  const [country, setCountry] =
-    useState<
-      "All" | Country
-    >("All");
-
-  const [category, setCategory] =
-    useState<
-      "All" | Category
-    >("All");
-
-  const [search, setSearch] =
-    useState("");
+  const [prospects, setProspects] =
+    useState<Prospect[]>([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -47,373 +63,273 @@ export default function Home() {
   const [error, setError] =
     useState("");
 
-  /*
-  |--------------------------------------------------------------------------
-  | Fetch data
-  |--------------------------------------------------------------------------
-  */
+  const [country, setCountry] =
+    useState("All");
 
-  async function fetchReleases() {
+  const [category, setCategory] =
+    useState("All");
+
+  const [search, setSearch] =
+    useState("");
+
+  async function loadProspects() {
     try {
       setLoading(true);
       setError("");
 
       const response =
         await fetch(
-          "/api/press-release"
+          "/api/prospects",
+          {
+            cache: "no-store",
+          }
         );
+
+      const data =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
-          "Failed to fetch releases"
+          data.error ||
+            "Failed to load prospects"
         );
       }
 
-      const result =
-        await response.json();
-
-      if (!result.success) {
+      if (!data.success) {
         throw new Error(
-          result.message
+          data.error ||
+            "Failed to load prospects"
         );
       }
 
-      setReleases(
-        result.data
+      setProspects(
+        data.data ?? []
       );
     } catch (error) {
-      console.error(error);
-
       setError(
-        "Unable to load press releases."
+        error instanceof Error
+          ? error.message
+          : "Something went wrong"
       );
     } finally {
       setLoading(false);
     }
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | Initial load
-  |--------------------------------------------------------------------------
-  */
-
   useEffect(() => {
-    fetchReleases();
+    loadProspects();
   }, []);
 
-  /*
-  |--------------------------------------------------------------------------
-  | Filter results
-  |--------------------------------------------------------------------------
-  */
-
-  const filteredReleases =
+  const filtered =
     useMemo(() => {
-      return releases.filter(
-        (release) => {
-          /*
-           * Country
-           */
-
-          const countryMatch =
+      return prospects.filter(
+        (prospect) => {
+          const matchesCountry =
             country === "All" ||
-            release.country ===
+            prospect.organization
+              .country ===
               country;
 
-          /*
-           * Category
-           */
-
-          const categoryMatch =
+          const matchesCategory =
             category === "All" ||
-            release.category ===
+            prospect.organization
+              .category ===
               category;
 
-          /*
-           * Search
-           */
+          const searchable =
+            [
+              prospect.organization
+                .name,
 
-          const text =
-            `
-              ${release.title}
-              ${release.description}
-              ${release.publisher}
-              ${release.country}
-              ${release.category}
-            `.toLowerCase();
+              prospect.announcement
+                .title,
 
-          const searchMatch =
-            text.includes(
+              prospect.announcement
+                .description,
+
+              prospect.announcement
+                .signals
+                .join(" "),
+            ]
+              .join(" ")
+              .toLowerCase();
+
+          const matchesSearch =
+            searchable.includes(
               search.toLowerCase()
             );
 
           return (
-            countryMatch &&
-            categoryMatch &&
-            searchMatch
+            matchesCountry &&
+            matchesCategory &&
+            matchesSearch
           );
         }
       );
     }, [
-      releases,
+      prospects,
       country,
       category,
       search,
     ]);
 
-  /*
-  |--------------------------------------------------------------------------
-  | Stats
-  |--------------------------------------------------------------------------
-  */
-
-  const healthcareCount =
-    releases.filter(
-      (release) =>
-        release.category ===
+  const healthCount =
+    prospects.filter(
+      (item) =>
+        item.organization
+          .category ===
         "Healthcare"
     ).length;
 
   const educationCount =
-    releases.filter(
-      (release) =>
-        release.category ===
+    prospects.filter(
+      (item) =>
+        item.organization
+          .category ===
         "Education"
     ).length;
 
+  const contactCount =
+    prospects.filter(
+      (item) =>
+        item.contact?.email
+    ).length;
+
   return (
-    <main className="min-h-screen bg-gray-50">
-      {/* Header */}
-
+    <main className="min-h-screen bg-slate-50">
       <header className="border-b bg-white">
-        <div className="mx-auto max-w-7xl px-6 py-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Healthcare & Education
-            PR Monitor
-          </h1>
+        <div className="mx-auto max-w-7xl px-6 py-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">
+                PR Intelligence
+              </h1>
 
-          <p className="mt-2 text-gray-500">
-            Singapore · Malaysia ·
-            Hong Kong · Last 14 days
-          </p>
+              <p className="mt-1 text-sm text-slate-500">
+                Health 2.0 & Education 2.0
+                prospect discovery
+              </p>
+            </div>
+
+            <button
+              onClick={loadProspects}
+              disabled={loading}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {loading
+                ? "Searching..."
+                : "Refresh PRs"}
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-6 py-8">
-        {/* Stats */}
-
-        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
+      <section className="mx-auto max-w-7xl px-6 py-6">
+        <div className="grid gap-4 md:grid-cols-4">
           <Stat
-            title="Total PRs"
-            value={
-              releases.length
-            }
+            title="Total prospects"
+            value={prospects.length}
           />
 
           <Stat
             title="Healthcare"
-            value={
-              healthcareCount
-            }
+            value={healthCount}
           />
 
           <Stat
             title="Education"
-            value={
-              educationCount
-            }
+            value={educationCount}
+          />
+
+          <Stat
+            title="Public emails"
+            value={contactCount}
           />
         </div>
 
-        {/* Filters */}
-
-        <div className="mb-8 rounded-xl border bg-white p-6 shadow-sm">
-          {/* Country */}
-
-          <div className="mb-6">
-            <p className="mb-3 text-sm font-semibold text-gray-700">
-              Country
-            </p>
-
-            <div className="flex flex-wrap gap-2">
-              <FilterButton
-                active={
-                  country === "All"
-                }
-                onClick={() =>
-                  setCountry("All")
-                }
-              >
-                All
-              </FilterButton>
-
-              <FilterButton
-                active={
-                  country ===
-                  "Singapore"
-                }
-                onClick={() =>
-                  setCountry(
-                    "Singapore"
-                  )
-                }
-              >
-                🇸🇬 Singapore
-              </FilterButton>
-
-              <FilterButton
-                active={
-                  country ===
-                  "Malaysia"
-                }
-                onClick={() =>
-                  setCountry(
-                    "Malaysia"
-                  )
-                }
-              >
-                🇲🇾 Malaysia
-              </FilterButton>
-
-              <FilterButton
-                active={
-                  country ===
-                  "Hong Kong"
-                }
-                onClick={() =>
-                  setCountry(
-                    "Hong Kong"
-                  )
-                }
-              >
-                🇭🇰 Hong Kong
-              </FilterButton>
-            </div>
-          </div>
-
-          {/* Category */}
-
-          <div className="mb-6">
-            <p className="mb-3 text-sm font-semibold text-gray-700">
-              Industry
-            </p>
-
-            <div className="flex flex-wrap gap-2">
-              <FilterButton
-                active={
-                  category === "All"
-                }
-                onClick={() =>
-                  setCategory("All")
-                }
-              >
-                All
-              </FilterButton>
-
-              <FilterButton
-                active={
-                  category ===
-                  "Healthcare"
-                }
-                onClick={() =>
-                  setCategory(
-                    "Healthcare"
-                  )
-                }
-              >
-                🏥 Healthcare
-              </FilterButton>
-
-              <FilterButton
-                active={
-                  category ===
-                  "Education"
-                }
-                onClick={() =>
-                  setCategory(
-                    "Education"
-                  )
-                }
-              >
-                🎓 Education
-              </FilterButton>
-            </div>
-          </div>
-
-          {/* Search */}
-
+        <div className="mt-6 flex flex-col gap-3 rounded-xl border bg-white p-4 md:flex-row">
           <input
-            type="text"
-            placeholder="Search PRs..."
             value={search}
-            onChange={(e) =>
+            onChange={(event) =>
               setSearch(
-                e.target.value
+                event.target.value
               )
             }
-            className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-black"
+            placeholder="Search organization, PR, signal..."
+            className="flex-1 rounded-lg border px-4 py-2 text-sm outline-none focus:border-slate-500"
           />
+
+          <select
+            value={country}
+            onChange={(event) =>
+              setCountry(
+                event.target.value
+              )
+            }
+            className="rounded-lg border px-4 py-2 text-sm"
+          >
+            <option>All</option>
+            <option>Singapore</option>
+            <option>Malaysia</option>
+            <option>Hong Kong</option>
+          </select>
+
+          <select
+            value={category}
+            onChange={(event) =>
+              setCategory(
+                event.target.value
+              )
+            }
+            className="rounded-lg border px-4 py-2 text-sm"
+          >
+            <option>All</option>
+            <option>Healthcare</option>
+            <option>Education</option>
+          </select>
         </div>
 
-        {/* Loading */}
-
-        {loading && (
-          <div className="rounded-xl border bg-white p-10 text-center">
-            Loading latest PRs...
-          </div>
-        )}
-
-        {/* Error */}
-
-        {!loading && error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-700">
+        {error && (
+          <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error}
           </div>
         )}
 
-        {/* Results */}
+        {loading && (
+          <div className="py-20 text-center text-sm text-slate-500">
+            Searching recent announcements...
+          </div>
+        )}
 
         {!loading &&
           !error &&
-          filteredReleases.length ===
-            0 && (
-            <div className="rounded-xl border bg-white p-10 text-center">
-              <p className="text-gray-500">
-                No PRs found.
+          filtered.length === 0 && (
+            <div className="py-20 text-center">
+              <p className="text-lg font-semibold text-slate-800">
+                No matching prospects
+              </p>
+
+              <p className="mt-2 text-sm text-slate-500">
+                Try another filter or refresh
+                the search.
               </p>
             </div>
           )}
 
-        {!loading &&
-          !error &&
-          filteredReleases.length >
-            0 && (
-            <div className="space-y-4">
-              {filteredReleases.map(
-                (release) => (
-                  <PRCard
-                    key={
-                      release.id
-                    }
-                    release={
-                      release
-                    }
-                  />
-                )
-              )}
-            </div>
+        <div className="mt-6 grid gap-5">
+          {filtered.map(
+            (prospect) => (
+              <ProspectCard
+                key={prospect.id}
+                prospect={prospect}
+              />
+            )
           )}
-      </div>
+        </div>
+      </section>
     </main>
   );
 }
-
-/*
-|--------------------------------------------------------------------------
-| Stat
-|--------------------------------------------------------------------------
-*/
 
 function Stat({
   title,
@@ -423,134 +339,223 @@ function Stat({
   value: number;
 }) {
   return (
-    <div className="rounded-xl border bg-white p-5 shadow-sm">
-      <p className="text-sm text-gray-500">
+    <div className="rounded-xl border bg-white p-5">
+      <p className="text-sm text-slate-500">
         {title}
       </p>
 
-      <p className="mt-2 text-3xl font-bold text-gray-900">
+      <p className="mt-2 text-3xl font-bold text-slate-900">
         {value}
       </p>
     </div>
   );
 }
 
-/*
-|--------------------------------------------------------------------------
-| Filter button
-|--------------------------------------------------------------------------
-*/
-
-function FilterButton({
-  active,
-  onClick,
-  children,
+function ProspectCard({
+  prospect,
 }: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
+  prospect: Prospect;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-        active
-          ? "bg-black text-white"
-          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-      }`}
-    >
-      {children}
-    </button>
+    <article className="rounded-2xl border bg-white p-6 shadow-sm">
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col justify-between gap-4 md:flex-row">
+          <div>
+            <div className="flex flex-wrap gap-2">
+              <Badge>
+                {
+                  prospect.organization
+                    .category
+                }
+              </Badge>
+
+              <Badge>
+                {
+                  prospect.organization
+                    .country
+                }
+              </Badge>
+
+              {prospect.announcement.signals.map(
+                (signal) => (
+                  <Badge key={signal}>
+                    {signal}
+                  </Badge>
+                )
+              )}
+            </div>
+
+            <h2 className="mt-3 text-xl font-bold text-slate-900">
+              {
+                prospect.organization
+                  .name
+              }
+            </h2>
+
+            <p className="mt-2 font-medium text-slate-800">
+              {
+                prospect.announcement
+                  .title
+              }
+            </p>
+
+            <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
+              {
+                prospect.announcement
+                  .description
+              }
+            </p>
+          </div>
+
+          <div className="flex h-fit shrink-0 flex-col items-center rounded-xl bg-slate-100 px-5 py-3">
+            <span className="text-xs text-slate-500">
+              Fit
+            </span>
+
+            <span className="text-3xl font-bold text-slate-900">
+              {prospect.fit.score}
+            </span>
+          </div>
+        </div>
+
+        <div className="border-t pt-5">
+          <p className="text-sm font-semibold text-slate-900">
+            Why this prospect?
+          </p>
+
+          <ul className="mt-2 space-y-1 text-sm text-slate-600">
+            {prospect.fit.reasons.map(
+              (reason) => (
+                <li
+                  key={reason}
+                  className="list-inside list-disc"
+                >
+                  {reason}
+                </li>
+              )
+            )}
+          </ul>
+        </div>
+
+        {prospect.contact && (
+          <div className="rounded-xl border bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-900">
+              Decision maker
+            </p>
+
+            <p className="mt-2 font-medium">
+              {
+                prospect.contact
+                  .name
+              }
+            </p>
+
+            <p className="text-sm text-slate-500">
+              {
+                prospect.contact
+                  .title
+              }
+            </p>
+
+            {prospect.contact
+              .email && (
+              <p className="mt-2 text-sm font-medium text-green-700">
+                {
+                  prospect.contact
+                    .email
+                }
+              </p>
+            )}
+
+            <p className="mt-1 text-xs text-slate-400">
+              Confidence:{" "}
+              {
+                prospect.contact
+                  .confidence
+              }
+            </p>
+          </div>
+        )}
+
+        {prospect.outreach && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+            <p className="text-sm font-semibold text-slate-900">
+              Outreach angle
+            </p>
+
+            <p className="mt-2 text-sm leading-6 text-slate-700">
+              {
+                prospect.outreach
+                  .angle
+              }
+            </p>
+
+            <details className="mt-4">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-900">
+                View email draft
+              </summary>
+
+              <div className="mt-3 whitespace-pre-wrap rounded-lg bg-white p-4 text-sm leading-6 text-slate-700">
+                {
+                  prospect.outreach
+                    .email
+                }
+              </div>
+            </details>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-3 border-t pt-5">
+          <a
+            href={
+              prospect.announcement
+                .url
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+          >
+            View PR →
+          </a>
+
+          {prospect.contact
+            ?.linkedinUrl && (
+            <a
+              href={
+                prospect.contact
+                  .linkedinUrl
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg border px-4 py-2 text-sm font-medium text-slate-700"
+            >
+              LinkedIn →
+            </a>
+          )}
+
+          {prospect.contact
+            ?.email && (
+            <a
+              href={`mailto:${prospect.contact.email}`}
+              className="rounded-lg border px-4 py-2 text-sm font-medium text-slate-700"
+            >
+              Email →
+            </a>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
 
-/*
-|--------------------------------------------------------------------------
-| PR Card
-|--------------------------------------------------------------------------
-*/
-
-function PRCard({
-  release,
+function Badge({
+  children,
 }: {
-  release: PressRelease;
+  children: React.ReactNode;
 }) {
-  const publishedDate =
-    new Date(
-      release.publishedAt
-    );
-
   return (
-    <article className="rounded-xl border bg-white p-6 shadow-sm hover:shadow-md">
-      {/* Tags */}
-
-      <div className="mb-3 flex flex-wrap gap-2">
-        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
-          {release.country}
-        </span>
-
-        {release.category ===
-        "Healthcare" ? (
-          <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
-            🏥 Healthcare
-          </span>
-        ) : (
-          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-            🎓 Education
-          </span>
-        )}
-      </div>
-
-      {/* Title */}
-
-      <h2 className="text-xl font-semibold text-gray-900">
-        {release.title}
-      </h2>
-
-      {/* Publisher */}
-
-      {release.publisher && (
-        <p className="mt-2 text-sm font-medium text-gray-600">
-          Publisher:{" "}
-          {release.publisher}
-        </p>
-      )}
-
-      {/* Date */}
-
-      <p className="mt-1 text-sm text-gray-400">
-        {publishedDate.toLocaleString(
-          "en-IN",
-          {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          }
-        )}
-      </p>
-
-      {/* Description */}
-
-      {release.description && (
-        <p className="mt-4 line-clamp-3 text-sm leading-6 text-gray-600">
-          {release.description}
-        </p>
-      )}
-
-      {/* Read */}
-
-      <div className="mt-5">
-        <a
-          href={release.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-        >
-          Read Article →
-        </a>
-      </div>
-    </article>
+    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+      {children}
+    </span>
   );
 }
