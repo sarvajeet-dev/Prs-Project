@@ -1,69 +1,315 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+type Country =
+  | "Singapore"
+  | "Malaysia"
+  | "Hong Kong";
+
+type PressRelease = {
+  id: string;
+  title: string;
+  company: string;
+  country: Country;
+  publishedAt: string;
+  description: string;
+  url: string;
+  source: string;
+};
 
 export default function Home() {
+  const [releases, setReleases] = useState<
+    PressRelease[]
+  >([]);
+
+  const [country, setCountry] = useState<
+    Country | "All"
+  >("All");
+
+  const [search, setSearch] = useState("");
+
+  const [loading, setLoading] = useState(true);
+
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function fetchReleases() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const response = await fetch(
+          "/api/press-release"
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            "Failed to fetch press releases"
+          );
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(
+            result.message ||
+              "Failed to fetch press releases"
+          );
+        }
+
+        setReleases(result.data);
+      } catch (error) {
+        console.error(error);
+
+        setError(
+          "Unable to load press releases."
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchReleases();
+  }, []);
+
+  const filteredReleases = useMemo(() => {
+    return releases.filter((release) => {
+      const matchesCountry =
+        country === "All" ||
+        release.country === country;
+
+      const searchText =
+        `${release.title} ${release.company} ${release.description}`
+          .toLowerCase();
+
+      const matchesSearch =
+        searchText.includes(
+          search.toLowerCase()
+        );
+
+      return (
+        matchesCountry &&
+        matchesSearch
+      );
+    });
+  }, [releases, country, search]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <main className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="border-b bg-white">
+        <div className="mx-auto max-w-7xl px-6 py-6">
+          <h1 className="text-3xl font-bold text-gray-900">
+            Latest Press Releases
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+
+          <p className="mt-2 text-gray-600">
+            Singapore · Malaysia · Hong Kong
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </header>
+
+      <div className="mx-auto max-w-7xl px-6 py-8">
+        {/* Filters */}
+        <div className="mb-8 flex flex-col gap-4 rounded-xl border bg-white p-5 shadow-sm">
+          
+          {/* Country buttons */}
+          <div className="flex flex-wrap gap-2">
+            {[
+              "All",
+              "Singapore",
+              "Malaysia",
+              "Hong Kong",
+            ].map((item) => (
+              <button
+                key={item}
+                onClick={() =>
+                  setCountry(
+                    item as Country | "All"
+                  )
+                }
+                className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                  country === item
+                    ? "bg-black text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+
+          {/* Search */}
+          <input
+            type="text"
+            placeholder="Search press releases..."
+            value={search}
+            onChange={(e) =>
+              setSearch(e.target.value)
+            }
+            className="w-full rounded-lg border px-4 py-3 outline-none focus:border-black"
+          />
         </div>
-      </main>
+
+        {/* Stats */}
+        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Stat
+            title="Total PRs"
+            value={filteredReleases.length}
+          />
+
+          <Stat
+            title="Singapore"
+            value={
+              releases.filter(
+                (r) =>
+                  r.country ===
+                  "Singapore"
+              ).length
+            }
+          />
+
+          <Stat
+            title="Malaysia / Hong Kong"
+            value={
+              releases.filter(
+                (r) =>
+                  r.country ===
+                    "Malaysia" ||
+                  r.country ===
+                    "Hong Kong"
+              ).length
+            }
+          />
+        </div>
+
+        {/* Loading */}
+        {loading && (
+          <div className="rounded-xl border bg-white p-10 text-center">
+            Loading press releases...
+          </div>
+        )}
+
+        {/* Error */}
+        {!loading && error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-700">
+            {error}
+          </div>
+        )}
+
+        {/* Empty */}
+        {!loading &&
+          !error &&
+          filteredReleases.length === 0 && (
+            <div className="rounded-xl border bg-white p-10 text-center text-gray-500">
+              No press releases found.
+            </div>
+          )}
+
+        {/* PR list */}
+        {!loading &&
+          !error &&
+          filteredReleases.length > 0 && (
+            <div className="space-y-4">
+              {filteredReleases.map(
+                (release) => (
+                  <PressReleaseCard
+                    key={release.id}
+                    release={release}
+                  />
+                )
+              )}
+            </div>
+          )}
+      </div>
+    </main>
+  );
+}
+
+function Stat({
+  title,
+  value,
+}: {
+  title: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-xl border bg-white p-5 shadow-sm">
+      <p className="text-sm text-gray-500">
+        {title}
+      </p>
+
+      <p className="mt-2 text-3xl font-bold">
+        {value}
+      </p>
     </div>
+  );
+}
+
+function PressReleaseCard({
+  release,
+}: {
+  release: PressRelease;
+}) {
+  const formattedDate =
+    new Date(
+      release.publishedAt
+    ).toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+  return (
+    <article className="rounded-xl border bg-white p-6 shadow-sm transition hover:shadow-md">
+      {/* Country + date */}
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+        <span className="rounded-full bg-gray-100 px-3 py-1 text-black font-medium">
+          {release.country}
+        </span>
+
+        <span className="text-gray-500">
+          {formattedDate}
+        </span>
+
+        <span className="text-gray-400">
+          {release.source}
+        </span>
+      </div>
+
+      {/* Title */}
+      <h2 className="text-xl font-semibold text-gray-900">
+        {release.title}
+      </h2>
+
+      {/* Publisher */}
+      {release.company && (
+        <p className="mt-2 font-medium text-gray-700">
+          {release.company}
+        </p>
+      )}
+
+      {/* Description */}
+      {release.description && (
+        <p className="mt-3 line-clamp-3 text-gray-600">
+          {release.description}
+        </p>
+      )}
+
+      {/* URL */}
+      <div className="mt-5">
+        <a
+          href={release.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+        >
+          Read PR →
+        </a>
+      </div>
+    </article>
   );
 }
