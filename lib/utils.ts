@@ -113,3 +113,69 @@ export function isRecent(
 
   return difference >= 0 && difference <= maxAge;
 }
+
+export function stripHtml(
+  content: string = ""
+): string {
+  if (!content) return "";
+
+  let cleaned = content;
+
+  // First, remove all HTML tags (anchor tags, font tags, etc.)
+  cleaned = cleaned.replace(/<[^>]*>/g, " ");
+
+  // Decode common HTML entities
+  const entities: Record<string, string> = {
+    "&nbsp;": " ",
+    "&quot;": '"',
+    "&#39;": "'",
+    "&#x27;": "'",
+    "&apos;": "'",
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&hellip;": "...",
+    "&mdash;": "—",
+    "&ndash;": "–",
+    "&rsquo;": "'",
+    "&lsquo;": "'",
+    "&rdquo;": '"',
+    "&ldquo;": '"',
+  };
+
+  Object.entries(entities).forEach(
+    ([entity, replacement]) => {
+      cleaned = cleaned.replace(
+        new RegExp(entity, "g"),
+        replacement
+      );
+    }
+  );
+
+  // Decode numeric HTML entities (&#123; or &#x7B;)
+  cleaned = cleaned.replace(
+    /&#(\d+);/g,
+    (_, code) =>
+      String.fromCharCode(
+        parseInt(code, 10)
+      )
+  );
+
+  cleaned = cleaned.replace(
+    /&#x([0-9a-fA-F]+);/g,
+    (_, code) =>
+      String.fromCharCode(
+        parseInt(code, 16)
+      )
+  );
+
+  // Remove any remaining HTML entities
+  cleaned = cleaned.replace(/&[a-z]+;/gi, " ");
+
+  // Collapse whitespace
+  cleaned = cleaned
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleaned;
+}

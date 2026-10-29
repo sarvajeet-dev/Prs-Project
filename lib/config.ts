@@ -207,4 +207,76 @@ export const NEWS_DOMAINS = [
   "straitstimes.com",
   "channelnewsasia.com",
   "thestar.com.my",
+  "yahoo.com",
+  "news.yahoo.com",
+  "techcrunch.com",
+  "techinasia.com",
+  "e27.co",
+  "nikkei.com",
+  "asia.nikkei.com",
+  "ft.com",
+  "wsj.com",
+  "theedgemalaysia.com",
+  "nytimes.com",
 ];
+
+export const PR_KEYWORDS = [
+  "press release",
+  "press-release",
+  "news release",
+  "media release",
+  "announces",
+  "announced",
+  "announcement",
+  "launches",
+  "launched",
+  "unveils",
+  "unveiled",
+  "introduces",
+  "introduced",
+  "official statement",
+  "official announcement",
+  "today announced",
+];
+
+export const RATE_LIMITS = {
+  newsapi: 95,
+  gnews: 95,
+  generalRequests: 10,
+};
+
+export const CACHE_CONFIG = {
+  ttlHours: 24,
+  maxItems: 5000,
+  deduplicationEnabled: true,
+};
+
+export const SOURCE_PRIORITY = [
+  "media-outreach",
+  "pr-newswire",
+  "business-wire",
+  "globe-newswire",
+  "google-news-rss",
+  "newsapi",
+  "gnews",
+  "web-scraper",
+] as const;
+
+/*
+ * PR distribution sources are the primary signal. News
+ * aggregators run too, but their results only survive the
+ * PR-only filter in discovery.ts when they contain PR
+ * language.
+ */
+export const PR_DISTRIBUTION_SOURCES = [
+  "media-outreach",
+  "pr-newswire",
+  "business-wire",
+  "globe-newswire",
+] as const;
+
+export const GOOGLE_NEWS_REGIONS = {
+  Singapore: "SG",
+  Malaysia: "MY",
+  "Hong Kong": "HK",
+} as const;

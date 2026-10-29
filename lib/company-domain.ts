@@ -1,75 +1,151 @@
 import { getDomain } from "./utils";
 
+const DOMAIN_CACHE = new Map<
+  string,
+  { domain: string | null; timestamp: number }
+>();
+
+const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+
+const BLOCKED_DOMAINS = [
+  "prnewswire.com",
+  "globenewswire.com",
+  "businesswire.com",
+  "reuters.com",
+  "bloomberg.com",
+  "forbes.com",
+  "linkedin.com",
+  "facebook.com",
+  "instagram.com",
+  "x.com",
+  "twitter.com",
+  "youtube.com",
+  "wikipedia.org",
+  "google.com",
+  "bing.com",
+  "yahoo.com",
+  "news.google.com",
+  "scmp.com",
+  "straitstimes.com",
+  "channelnewsasia.com",
+  "thestar.com.my",
+  "cnbc.com",
+  "bbc.com",
+  "cnn.com",
+];
+
+export async function getCompanyDomain(
+  organization: string
+): Promise<string | null> {
+  const cacheKey =
+    organization.toLowerCase().trim();
+
+  const cached = DOMAIN_CACHE.get(cacheKey);
+
+  if (
+    cached &&
+    Date.now() - cached.timestamp <
+      CACHE_TTL_MS
+  ) {
+    return cached.domain;
+  }
+
+  try {
+    const domain =
+      await searchDuckDuckGoForDomain(
+        organization
+      );
+
+    DOMAIN_CACHE.set(cacheKey, {
+      domain,
+      timestamp: Date.now(),
+    });
+
+    return domain;
+  } catch (error) {
+    console.error(
+      `[CompanyDomain] Lookup failed for ${organization}:`,
+      error instanceof Error
+        ? error.message
+        : "Unknown error"
+    );
+
+    DOMAIN_CACHE.set(cacheKey, {
+      domain: null,
+      timestamp: Date.now(),
+    });
+
+    return null;
+  }
+}
+
+async function searchDuckDuckGoForDomain(
+  organization: string
+): Promise<string | null> {
+  const query = `${organization} official website`;
+  const encoded =
+    encodeURIComponent(query);
+
+  const url = `https://html.duckduckgo.com/html/?q=${encoded}`;
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    } as RequestInit & {
+      signal: AbortSignal;
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const html = await response.text();
+
+    const urlPattern =
+      /uddg=([^&"']+)/g;
+
+    const matches = [
+      ...html.matchAll(urlPattern),
+    ];
+
+    for (const match of matches.slice(
+      0,
+      10
+    )) {
+      try {
+        const decoded =
+          decodeURIComponent(match[1]);
+
+        const domain = getDomain(decoded);
+
+        if (!domain) continue;
+
+        const blocked =
+          BLOCKED_DOMAINS.some((b) =>
+            domain.includes(b)
+          );
+
+        if (blocked) continue;
+
+        return domain;
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
 export async function findCompanyDomain(
   organization: string
 ): Promise<string | null> {
-  const apiKey = process.env.TAVILY_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("TAVILY_API_KEY is missing");
-  }
-
-  const response = await fetch(
-    "https://api.tavily.com/search",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        api_key: apiKey,
-
-        query: `"${organization}" official website`,
-
-        search_depth: "basic",
-
-        max_results: 5,
-
-        include_answer: false,
-
-        include_raw_content: false,
-
-        include_images: false,
-      }),
-
-      cache: "no-store",
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error("Tavily company lookup failed");
-  }
-
-  const data = await response.json();
-
-  const results = data.results || [];
-
-  const blockedDomains = [
-    "prnewswire.com",
-    "globenewswire.com",
-    "businesswire.com",
-    "reuters.com",
-    "bloomberg.com",
-    "forbes.com",
-    "linkedin.com",
-    "facebook.com",
-    "instagram.com",
-    "x.com",
-  ];
-
-  for (const result of results) {
-    const domain = getDomain(result.url);
-
-    if (!domain) continue;
-
-    const blocked = blockedDomains.some((blocked) =>
-      domain.includes(blocked)
-    );
-
-    if (blocked) continue;
-
-    return domain;
-  }
-
-  return null;
+  return getCompanyDomain(organization);
 }

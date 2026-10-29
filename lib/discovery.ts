@@ -3,6 +3,7 @@ import {
   EDUCATION_KEYWORDS,
   HEALTH_KEYWORDS,
   MARKETS,
+  PR_KEYWORDS,
   SIGNAL_KEYWORDS,
   SIGNALS,
 } from "./config";
@@ -20,9 +21,16 @@ import {
   getDomain,
   normalizeUrl,
   safeDate,
+  stripHtml,
 } from "./utils";
 
-import { searchTavily } from "./tavily";
+import { searchMultipleSources } from "./sources/search-orchestrator";
+import {
+  withRateLimit,
+  rateLimiter,
+} from "./cache/rate-limiter";
+import { deduplicationStore } from "./cache/deduplication";
+import { enrichProspect } from "./enrichment/prospect-enrichment";
 
 import {
   calculateScore,
@@ -38,6 +46,32 @@ interface DiscoveryOptions {
   conferences?: Conference[];
   markets?: Market[];
   signals?: Signal[];
+}
+
+function hasPRLanguage(text: string): boolean {
+  if (!text) return false;
+  const normalized = text.toLowerCase();
+  return PR_KEYWORDS.some((keyword) =>
+    normalized.includes(keyword)
+  );
+}
+
+function extractOrgFromTitle(
+  title: string
+): string {
+  if (!title) return "";
+
+  const cleaned = title
+    .replace(/\s*[-|–—]\s*.+$/, "")
+    .trim();
+
+  const words = cleaned.split(/\s+/);
+
+  if (words.length <= 6) {
+    return cleaned;
+  }
+
+  return words.slice(0, 6).join(" ");
 }
 
 /**
@@ -62,47 +96,67 @@ function buildQueries(
   const markets: Market[] =
     options.markets ?? MARKETS;
 
-  const signals: Signal[] =
-    options.signals ?? SIGNALS;
-
   const queries: string[] = [];
 
+  const broadIndustryTerms: Record<
+    Conference,
+    string[]
+  > = {
+    health: [
+      "healthcare",
+      "hospital",
+      "medtech",
+      "biotech",
+      "digital health",
+      "pharma",
+      "clinical",
+      "telehealth",
+      "medical",
+    ],
+    education: [
+      "edtech",
+      "university",
+      "school",
+      "learning platform",
+      "higher education",
+      "online learning",
+      "training",
+      "academic",
+    ],
+  };
+
+  const broadSignalTerms = [
+    "funding",
+    "raises",
+    "launch",
+    "expansion",
+    "partnership",
+    "appointed",
+    "announcement",
+  ];
+
   for (const conference of conferences) {
+    const industryTerms =
+      broadIndustryTerms[conference];
+
     for (const market of markets) {
-      for (const signal of signals) {
-        const industryKeywords =
+      for (const industry of industryTerms) {
+        const query = `${market} ${industry} when:7d`;
+        queries.push(query);
+      }
+
+      for (const signal of broadSignalTerms) {
+        const primaryTerm =
           conference === "health"
-            ? HEALTH_KEYWORDS
-            : EDUCATION_KEYWORDS;
+            ? "healthcare"
+            : "education";
 
-        const signalKeywords =
-          SIGNAL_KEYWORDS[signal];
-
-        const industryPart =
-          industryKeywords
-            .slice(0, 5)
-            .map((keyword) => `"${keyword}"`)
-            .join(" OR ");
-
-        const signalPart =
-          signalKeywords
-            .slice(0, 5)
-            .map((keyword) => `"${keyword}"`)
-            .join(" OR ");
-
-        const query = [
-          `"${market}"`,
-          `(${industryPart})`,
-          `(${signalPart})`,
-          `("press release" OR announcement OR news)`,
-        ].join(" ");
-
+        const query = `${market} ${primaryTerm} ${signal} when:7d`;
         queries.push(query);
       }
     }
   }
 
-  // Remove duplicate queries
   return [...new Set(queries)];
 }
 
@@ -207,28 +261,11 @@ function createProspect(
 
   /**
    * -----------------------------------------
-   * 3. Detect business signals
+   * 3. Detect business signals (optional)
    * -----------------------------------------
    */
   const signals =
     detectSignals(combinedText);
-
-  /**
-   * We are specifically looking for
-   * meaningful business events.
-   *
-   * Example:
-   *
-   * Funding
-   * Launch
-   * Partnership
-   * Expansion
-   * Leadership
-   * Research
-   */
-  if (signals.length === 0) {
-    return null;
-  }
 
   /**
    * -----------------------------------------
@@ -254,6 +291,27 @@ function createProspect(
   const sourceType =
     detectSourceType(result.url);
 
+  /*
+   * PR-only filter.
+   *
+   * - PR_DISTRIBUTION (prnewswire, globenewswire, businesswire, ...)
+   *   is always kept.
+   * - NEWS (reuters, bloomberg, CNA, Straits Times, ...) is always
+   *   rejected — the user explicitly asked for PRs, not news.
+   * - OTHER domains are kept only if the title/content uses press
+   *   release language ("announces", "launches", "press release", ...).
+   */
+  if (sourceType === "NEWS") {
+    return null;
+  }
+
+  if (
+    sourceType !== "PR_DISTRIBUTION" &&
+    !hasPRLanguage(combinedText)
+  ) {
+    return null;
+  }
+
   /**
    * -----------------------------------------
    * 7. Organization
@@ -265,10 +323,13 @@ function createProspect(
       content
     );
 
-  if (
-    !organization ||
-    organization === "Unknown Organization"
-  ) {
+  const finalOrgName =
+    organization &&
+    organization !== "Unknown Organization"
+      ? organization
+      : extractOrgFromTitle(result.title);
+
+  if (!finalOrgName) {
     return null;
   }
 
@@ -300,26 +361,27 @@ function createProspect(
    * 10. Create final Prospect
    * -----------------------------------------
    */
+  const cleanTitle = stripHtml(result.title);
+
+  const cleanDescription = stripHtml(
+    result.content ||
+      result.raw_content ||
+      ""
+  ).slice(0, 1000);
+
   return {
     id,
 
     organization: {
-      name: organization,
+      name: finalOrgName,
       country,
       category,
     },
 
     announcement: {
-      title: result.title,
+      title: cleanTitle,
 
-      description: (
-        result.content ||
-        result.raw_content ||
-        ""
-      )
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 1000),
+      description: cleanDescription,
 
       url: result.url,
 
@@ -368,6 +430,15 @@ export async function discoverProspects(
   const queries =
     buildQueries(options);
 
+  /*
+   * The deduplication store is a module-level singleton that
+   * persists across runs. On re-runs it would reject every URL
+   * seen before, collapsing results to near-zero. Clear it so
+   * each discovery starts with a clean slate — in-run duplicates
+   * are already handled by `resultMap` below.
+   */
+  deduplicationStore.clear();
+
   /**
    * Map URL -> Tavily result
    *
@@ -385,39 +456,66 @@ export async function discoverProspects(
 
   /**
    * -----------------------------------------
-   * 2. Search Tavily
+   * 2. Search multiple sources
    * -----------------------------------------
    *
-   * Maximum 5 requests at the same time.
+   * Maximum 3 concurrent searches.
+   * Uses rate limiting and deduplication.
    */
   await runWithConcurrency(
     queries,
-    5,
+    3,
     async (query) => {
-      const results =
-        await searchTavily(query);
-
-      rawResults += results.length;
-
-      for (const result of results) {
-        if (!result.url) {
-          continue;
-        }
-
-        const normalizedUrl =
-          normalizeUrl(result.url);
-
-        if (
-          !resultMap.has(normalizedUrl)
-        ) {
-          resultMap.set(
-            normalizedUrl,
+      try {
+        const results =
+          await withRateLimit(
+            "general",
+            () =>
+              searchMultipleSources(
+                query,
+                {
+                  maxResults: 50,
+                }
+              ),
             {
-              result,
-              query,
+              fallback: [],
+              delayMs: 100,
             }
           );
+
+        rawResults += results.length;
+
+        for (const result of results) {
+          if (!result.url) {
+            continue;
+          }
+
+          const normalizedUrl =
+            normalizeUrl(result.url);
+
+          if (
+            deduplicationStore.add(result.url)
+          ) {
+            if (
+              !resultMap.has(normalizedUrl)
+            ) {
+              resultMap.set(
+                normalizedUrl,
+                {
+                  result,
+                  query,
+                }
+              );
+            }
+          }
         }
+      } catch (error) {
+        console.error(
+          `[Discovery] Query failed: ${query}`,
+          error instanceof Error
+            ? error.message
+            : "Unknown error"
+        );
       }
     }
   );
@@ -455,6 +553,63 @@ export async function discoverProspects(
     (a, b) =>
       b.fit.score -
       a.fit.score
+  );
+
+  /**
+   * -----------------------------------------
+   * 4b. Enrich top prospects with contacts
+   * -----------------------------------------
+   *
+   * Only enrich top 15 prospects to keep discovery fast.
+   * Other prospects can be enriched on-demand later.
+   */
+  const enrichmentCount = Math.min(
+    15,
+    prospects.length
+  );
+
+  console.log(
+    `[Discovery] Enriching top ${enrichmentCount} prospects with contacts...`
+  );
+
+  await runWithConcurrency(
+    prospects.slice(0, enrichmentCount),
+    3,
+    async (prospect) => {
+      try {
+        const result = await enrichProspect(prospect);
+
+        if (result.primaryContact) {
+          prospect.organization.primaryContact =
+            result.primaryContact;
+        }
+
+        if (result.contacts.length > 0) {
+          prospect.organization.contacts =
+            result.contacts;
+        }
+
+        if (result.website) {
+          prospect.organization.website =
+            result.website;
+        }
+      } catch (error) {
+        console.error(
+          `[Discovery] Enrichment failed for ${prospect.organization.name}:`,
+          error instanceof Error
+            ? error.message
+            : "Unknown error"
+        );
+      }
+    }
+  );
+
+  const enrichedCount = prospects.filter(
+    (p) => p.organization.primaryContact
+  ).length;
+
+  console.log(
+    `[Discovery] Enriched ${enrichedCount}/${enrichmentCount} prospects`
   );
 
   /**

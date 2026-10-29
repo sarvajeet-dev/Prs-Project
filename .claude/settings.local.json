@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(dir C:\\\\Users\\\\RNF-User\\\\Desktop\\\\Prs_Project\\\\Prs-Project\\\\lib *)",
+      "Bash(dir C:\\\\Users\\\\RNF-User\\\\Desktop\\\\Prs_Project\\\\Prs-Project\\\\lib\\\\sources *)",
+      "Bash(dir C:\\\\Users\\\\RNF-User\\\\Desktop\\\\Prs_Project\\\\Prs-Project\\\\app\\\\api\\\\generate-email *)"
+    ]
+  }
+}

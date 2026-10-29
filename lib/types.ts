@@ -43,6 +43,9 @@ export interface Prospect {
     name: string;
     country: Market | null;
     category: Category;
+    primaryContact?: Contact | null;
+    contacts?: Contact[];
+    website?: string | null;
   };
 
   announcement: {
@@ -92,28 +95,12 @@ export interface Contact {
   emailType: string | null;
   confidence: number | null;
   verificationStatus: string | null;
+  source?: string | null;
+  sourceUrl?: string | null;
 }
 
 export interface ContactEnrichmentResponse {
   contact: Contact | null;
+  contacts?: Contact[];
   error?: string;
-}
-
-
-export interface Contact {
-  name: string | null;
-
-  firstName: string | null;
-
-  lastName: string | null;
-
-  title: string | null;
-
-  email: string | null;
-
-  emailType: string | null;
-
-  confidence: number | null;
-
-  verificationStatus: string | null;
 }
